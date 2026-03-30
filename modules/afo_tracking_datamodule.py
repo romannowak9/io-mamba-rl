@@ -97,12 +97,13 @@ class AFOTrackingDataModule(pl.LightningDataModule):
     - targets: (B, T, 4)
     
     '''
-    def __init__(self, data_dir="data/afo", batch_size=4, num_workers=8, transforms=None, sequence_length=2):
+    def __init__(self, data_dir="data/afo", batch_size=4, num_workers=8, train_transforms=None, test_transforms=None, sequence_length=2):
         super().__init__()
         self.data_dir = Path(data_dir)
         self.batch_size = batch_size
         self.num_workers = num_workers
-        self.transforms = transforms
+        self.train_transforms = train_transforms
+        self.test_transforms = test_transforms
         self.sequence_length = sequence_length
 
     def prepare_data(self):
@@ -110,13 +111,13 @@ class AFOTrackingDataModule(pl.LightningDataModule):
 
     def setup(self, stage=None):
         self.train_dataset = AFOTrackingDataset(
-            self.data_dir, split="train", transforms=self.transforms, sequence_length=self.sequence_length
+            self.data_dir, split="train", transforms=self.train_transforms, sequence_length=self.sequence_length
         )
         self.val_dataset = AFOTrackingDataset(
-            self.data_dir, split="valid", transforms=self.transforms, sequence_length=self.sequence_length
+            self.data_dir, split="valid", transforms=self.test_transforms, sequence_length=self.sequence_length
         )
         self.test_dataset = AFOTrackingDataset(
-            self.data_dir, split="test", transforms=self.transforms, sequence_length=self.sequence_length
+            self.data_dir, split="test", transforms=self.test_transforms, sequence_length=self.sequence_length
         )
 
     def train_dataloader(self):

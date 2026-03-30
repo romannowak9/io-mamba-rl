@@ -1,61 +1,49 @@
-import subprocess
-import zipfile
 from pathlib import Path
+import zipfile
 import shutil
+import kagglehub
+
 
 AFO_KAGGLE_NAME = "jangsienicajzkowy/afo-aerial-dataset-of-floating-objects"
 
 
 def download_afo_dataset(data_dir="data/afo", force=False):
+
     data_dir = Path(data_dir)
-    raw_dir = data_dir / "raw"
+    data_dir.mkdir(parents=True, exist_ok=True)
 
     dataset_ready = (data_dir / "train").exists()
-
     if dataset_ready and not force:
+        print("Dataset already exists. Skipping download.")
         return
 
-    raw_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Downloading AFO dataset to {data_dir}...")
+    zip_path = Path(kagglehub.dataset_download(AFO_KAGGLE_NAME))
+    print(f"Downloaded ZIP to: {zip_path}")
 
-    zip_path = raw_dir / "afo.zip"
-
-    subprocess.run(
-        [
-            "kaggle",
-            "datasets",
-            "download",
-            "-d",
-            AFO_KAGGLE_NAME,
-            "-p",
-            str(raw_dir),
-            "--force",
-        ],
-        check=True,
-    )
-
-    downloaded_zip = list(raw_dir.glob("*.zip"))[0]
-
-    if downloaded_zip != zip_path:
-        downloaded_zip.rename(zip_path)
-
+    print("Extracting dataset...")
     with zipfile.ZipFile(zip_path, "r") as z:
-        z.extractall(raw_dir)
+        z.extractall(data_dir)
 
-    extracted = [p for p in raw_dir.iterdir() if p.is_dir()][0]
+    # Sprawdzenie, który katalog został rozpakowany
+    extracted_dirs = [p for p in data_dir.iterdir() if p.is_dir() and p.name != "__MACOSX"]
+    if not extracted_dirs:
+        raise RuntimeError("Extracted directory not found!")
+    extracted = extracted_dirs[0]
 
-    splits = {
-        "train": "train",
-        "valid": "valid",
-        "test": "test",
-    }
-
-    for split_src, split_dst in splits.items():
-        src = extracted / split_src
-        dst = data_dir / split_dst
+    splits = ["train", "valid", "test"]
+    for split in splits:
+        src = extracted / split
+        dst = data_dir / split
 
         if dst.exists():
             shutil.rmtree(dst)
 
         shutil.copytree(src, dst)
 
-    shutil.rmtree(raw_dir)
+    # Usuwamy ZIP i tymczasowy folder
+    zip_path.unlink()
+    if extracted.exists():
+        shutil.rmtree(extracted)
+
+    print("Dataset ready!")
