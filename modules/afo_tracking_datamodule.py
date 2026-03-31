@@ -4,6 +4,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import cv2
 import pytorch_lightning as pl
+import torchvision.transforms as T
 
 from utils.afo_download import download_afo_dataset
 from utils.helpers import sort_key_from_filename
@@ -11,12 +12,15 @@ from utils.afo_info import CLASS_NAME_BY_ID
 
 
 class AFOTrackingDataset(Dataset):
-    def __init__(self, data_dir, split="train", transforms=None, n_classes=6, sequence_length=1):
+    def __init__(self, data_dir, split="train", img_size=(1080, 1920), transforms=None, n_classes=6, sequence_length=1):
         '''
+        img_size: Tuple[int] - (h, w) shape for resize of all frames
         n_classes: int - Number of classes. Possible values: 1, 2, 6
+        transforms: torchvision.transforms to apply to image after already implemented ToTensor() and Resize()
+        sequence_length: number of subsequent frames in one item
 
         Output:
-        - frames: torch.tensor [T, CH, H, W], where T is sequence_length (number of subsequent frames in one item)
+        - frames: torch.tensor [T, CH, H, W], where T is sequence_length
         - targets: List[Dict[torch.tensor]] - dict keys: 'boxes', 'labels', 'image_id'
         '''
         self.root = Path(data_dir) / "afo"
@@ -37,6 +41,7 @@ class AFOTrackingDataset(Dataset):
             raise RuntimeError(f"Not enough images in {self.images_dir} for sequence length {self.sequence_length}")
         
         self.n_classes = n_classes
+        self.img_size = img_size
 
         match n_classes:
             case 1:
@@ -76,6 +81,12 @@ class AFOTrackingDataset(Dataset):
             boxes.append([min(x1,x2), min(y1,y2), max(x1,x2), max(y1,y2)])
             labels.append(obj.get("classId", [torch.nan]))
 
+        # Scale boxes
+        if boxes:
+            scale_x = self.img_size[1] / data["size"]["width"]
+            scale_y = self.img_size[0] / data["size"]["height"]
+            boxes = [[x1 * scale_x, y1 * scale_y, x2 * scale_x, y2 * scale_y] for x1, y1, x2, y2 in boxes]
+
         filtered = [(box, label) for box, label in zip(boxes, labels) if CLASS_NAME_BY_ID[label] in self.valid_classes]
 
         if filtered:
@@ -102,12 +113,13 @@ class AFOTrackingDataset(Dataset):
                 "image_id": torch.tensor(idx + i)
             }
 
+            # Transforms
+            if not isinstance(image, torch.Tensor):
+                image = T.ToTensor()(image)
+            image = T.Resize(self.img_size)(image)
+
             if self.transforms:
                 image = self.transforms(image)
-
-            # jeśli transformacje nie zwrócą tensoru
-            if not isinstance(image, torch.Tensor):
-                image = torch.from_numpy(image).float()
 
             frames.append(image)
             targets.append(target)
@@ -126,18 +138,26 @@ def tracking_collate(batch):
 
 class AFOTrackingDataModule(pl.LightningDataModule):
     """
-    n_classes: int - Number of classes. Possible values: 1, 2, 6
+    Parameters:
+    - n_classes: int - Number of classes. Possible values: 1, 2, 6
+    - batch_size
+    - img_size: Tuple[int] - (h, w) shape for resize of all frames
+    - sequence_length: number of subsequent frames in one item
+    - num_workers
+    - train_transforms: torchvision.transforms to apply to image after already implemented ToTensor() and Resize() for train dataset
+    - test_transforms: torchvision.transforms to apply to image after already implemented ToTensor() and Resize() for test and validation dataset
 
     Output:
     - frames: Tensor(B, T, C, H, W)
     - targets: List[B][T]{boxes, labels, image_id}
     """
-    def __init__(self, data_dir="data/afo", n_classes=6, batch_size=8, num_workers=8,
-                 train_transforms=None, test_transforms=None, sequence_length=1):
+    def __init__(self, data_dir="data/afo", n_classes=6, batch_size=8, img_size=(1080, 1920),
+                 sequence_length=1, num_workers=2, train_transforms=None, test_transforms=None):
         super().__init__()
         self.data_dir = Path(data_dir)
         self.n_classes = n_classes
         self.batch_size = batch_size
+        self.img_size = img_size
         self.num_workers = num_workers
         self.train_transforms = train_transforms
         self.test_transforms = test_transforms
@@ -148,13 +168,13 @@ class AFOTrackingDataModule(pl.LightningDataModule):
 
     def setup(self, stage=None):
         self.train_dataset = AFOTrackingDataset(
-            self.data_dir, split="train", transforms=self.train_transforms, n_classes=self.n_classes, sequence_length=self.sequence_length
+            self.data_dir, split="train", transforms=self.train_transforms, n_classes=self.n_classes, img_size=self.img_size, sequence_length=self.sequence_length
         )
         self.val_dataset = AFOTrackingDataset(
-            self.data_dir, split="valid", transforms=self.test_transforms, n_classes=self.n_classes, sequence_length=self.sequence_length
+            self.data_dir, split="valid", transforms=self.test_transforms, n_classes=self.n_classes, img_size=self.img_size, sequence_length=self.sequence_length
         )
         self.test_dataset = AFOTrackingDataset(
-            self.data_dir, split="test", transforms=self.test_transforms, n_classes=self.n_classes, sequence_length=self.sequence_length
+            self.data_dir, split="test", transforms=self.test_transforms, n_classes=self.n_classes, img_size=self.img_size, sequence_length=self.sequence_length
         )
 
     def train_dataloader(self):

@@ -17,6 +17,7 @@ def dataset_test(transforms=None):
     dataset = AFOTrackingDataset(
         data_dir,
         split="train",
+        img_size=(1080,1920),
         sequence_length=sequence_length,
         n_classes=6,
         transforms=transforms
@@ -35,9 +36,7 @@ def dataset_test(transforms=None):
 
 if __name__ == '__main__':
     transforms = T.Compose([
-        T.ToTensor(),                     # HWC [0,255] -> C,H,W [0,1]
         # T.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
-        # T.Resize([512, 512]),
         # AddGaussianNoise(std=0.1),       # nasz własny szum
     ])
 

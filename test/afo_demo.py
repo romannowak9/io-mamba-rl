@@ -35,8 +35,9 @@ def afo_test():
             ann = sly.Annotation.from_json(ann_json, project.meta)
 
             img = sly.image.read(image_path)  # rgb - order
+            print(img.shape)
 
-            ann.draw_pretty(thickness=2)
+            ann.draw_pretty(img, thickness=2)
             # lub 
             # ann.draw(img, fill_rectangles=False, thickness=2, draw_class_names=True)
 
