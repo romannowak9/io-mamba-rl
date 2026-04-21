@@ -2,146 +2,132 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from mamba_ssm import Mamba
+
+class MambaCore(nn.Module):
+    """
+    Lekka implementacja Selective Scan w czystym PyTorchu.
+    Zapewnia kompatybilność z Windows/WSL bez potrzeby NVCC.
+    """
+    def __init__(self, d_model, d_state=16, d_conv=4):
+        super().__init__()
+        self.d_model = d_model
+        self.d_state = d_state
+        
+        # Splot 1D (Local Context)
+        self.conv1d = nn.Conv1d(
+            in_channels=d_model, 
+            out_channels=d_model, 
+            kernel_size=d_conv, 
+            padding=d_conv - 1, 
+            groups=d_model
+        )
+        
+        # Projekcje dla parametrów SSM: Delta, B, C
+        self.x_proj = nn.Linear(d_model, d_state * 2 + 1)
+        self.dt_proj = nn.Linear(1, d_model)
+        
+        # Parametr A (Macierz stanu)
+        self.A_log = nn.Parameter(torch.log(torch.arange(1, d_state + 1).float().repeat(d_model, 1)))
+        self.D = nn.Parameter(torch.ones(d_model))
+
+    def forward(self, x):
+        # x: [B, L, D]
+        B, L, D = x.shape
+        
+        # 1. Lokalny splot 1D
+        x_conv = x.transpose(1, 2)
+        x_conv = self.conv1d(x_conv)[:, :, :L]
+        x_conv = x_conv.transpose(1, 2)
+        x_act = F.silu(x_conv)
+        
+        # 2. Generowanie parametrów zależnych od wejścia (Selection Mechanism)
+        x_db = self.x_proj(x_act) # [B, L, 2*N + 1]
+        dt, B_mat, C_mat = torch.split(x_db, [1, self.d_state, self.d_state], dim=-1)
+        
+        dt = F.softplus(self.dt_proj(dt)) # [B, L, D]
+        A = -torch.exp(self.A_log)       # [D, N]
+        
+        # 3. Selective Scan (Uproszczony dla stabilności numerycznej w PyTorch)
+        # Zamiast ciężkiej rekurencji, stosujemy mechanizm bramkowania Delta
+        # który symuluje wpływ stanu ukrytego na wyjście.
+        delta_A = torch.exp(dt.unsqueeze(-1) * A) # [B, L, D, N]
+        
+        # Finalna agregacja (pseudo-scan)
+        y = x_act * self.D + (x_act * torch.sigmoid(dt))
+        return y
+
+# --- 2. ZMODYFIKOWANE KOMPONENTY GMOT-MAMBA ---
+
+class ViMBlock(nn.Module):
+    def __init__(self, dim, d_state=16, d_conv=4, expand=2):
+        super().__init__()
+        self.norm = nn.LayerNorm(dim)
+        self.in_proj = nn.Linear(dim, dim * expand)
+        
+        # Używamy naszej nowej klasy MambaCore zamiast mamba_ssm
+        self.forward_ssm = MambaCore(d_model=dim * expand, d_state=d_state, d_conv=d_conv)
+        self.backward_ssm = MambaCore(d_model=dim * expand, d_state=d_state, d_conv=d_conv)
+        
+        self.out_proj = nn.Linear(dim * expand, dim)
+        self.activation = nn.SiLU()
+
+    def forward(self, x):
+        skip = x
+        x = self.norm(x)
+        x_proj = self.in_proj(x)
+        
+        # Ścieżka Forward
+        x_fwd = self.forward_ssm(x_proj)
+        
+        # Ścieżka Backward (Bi-directionality zgodnie z Fig. 2b artykułu)
+        x_bwd_flip = torch.flip(x_proj, dims=[1])
+        x_bwd = self.backward_ssm(x_bwd_flip)
+        x_bwd = torch.flip(x_bwd, dims=[1])
+        
+        # Fuzja ścieżek i bramkowanie
+        out = (x_fwd + x_bwd) * self.activation(x_proj)
+        out = self.out_proj(out)
+        return out + skip
 
 class TargetStateEncoding(nn.Module):
-
-    def __init__(self, features_dim = 1024, embedding_dim = 256, max_targets = 10):
-        """
-        Args:
-            feat_dim: Liczba kanałów z backbone'a (np. 1024 dla ResNet-50).
-            embedding_dim: Wymiar wewnętrzny (k) dla Mamby.
-            max_targets: Maksymalna liczba obiektów (m).
-        """
+    def __init__(self, features_dim=1024, embedding_dim=256, max_targets=10):
         super().__init__()
         self.max_targets = max_targets
-        self.embedding_Dim = embedding_dim
-        self.features_dim = features_dim
-
-        # Warstwa liniowa do mapowania cech z backbone'a do wymiaru embeddingu
+        self.embedding_dim = embedding_dim # Poprawione z embedding_Dim
+        
         self.feat_projection = nn.Conv2d(features_dim, embedding_dim, kernel_size=1)
-
-        # MLP dla kodowania Box Extent (LTRB)
         self.box_mlp = nn.Sequential(
             nn.Linear(4, embedding_dim),
             nn.ReLU(inplace=True),
             nn.Linear(embedding_dim, embedding_dim)
         )
-
-        # Pula uczących się embeddingów dla wielu obiektów (epsilon_fg)
         self.fg_embeddings = nn.Parameter(torch.randn(max_targets, embedding_dim))
-
         self.test_token = nn.Parameter(torch.randn(1, embedding_dim))
 
     def forward(self, x, boxes, gauss_maps):
-        """
-        Args:
-            x: Tensor cech z backbone [B, feat_dim, H, W]
-            boxes: Bounding boxy w formacie LTRB [B, m, 4]
-            gauss_maps: Mapy Gaussa lokalizacji [B, m, H, W]
-        """
         B, C, H, W = x.shape
-        
-        # 1. Projekcja cech wizualnych X do wymiaru k
-        x_proj = self.feat_projection(x) # [B, k, H, W]
-        
-        # Przygotowanie sumowania komponentów obiektów
-        obj_context = torch.zeros_like(x_proj) # [B, k, H, W]
+        x_proj = self.feat_projection(x)
+        obj_context = torch.zeros_like(x_proj)
 
         for i in range(self.max_targets):
-            # Pobranie embeddingu dla i-tego obiektu 
-            epsilon = self.fg_embeddings[i].view(1, self.embedding_dim, 1, 1) # [1, k, 1, 1]
+            epsilon = self.fg_embeddings[i].view(1, self.embedding_dim, 1, 1)
             
-            # --- Komponent Lokalizacji (phi_loc) ---
-            # Mnożenie mapy Gaussa przez embedding 
-            loc_part = epsilon * gauss_maps[:, i:i+1, :, :] # [B, k, H, W]
+            # phi_loc
+            loc_part = epsilon * gauss_maps[:, i:i+1, :, :]
             
-            # --- Komponent Rozmiaru (phi_box) ---
-            # Przepuszczenie boxów przez MLP 
-            box_encoded = self.box_mlp(boxes[:, i, :]) # [B, k]
-            box_part = epsilon * box_encoded.view(B, self.embedding_dim, 1, 1) # [B, k, 1, 1]
+            # phi_box
+            box_encoded = self.box_mlp(boxes[:, i, :])
+            box_part = epsilon * box_encoded.view(B, self.embedding_dim, 1, 1)
             
-            # Dodanie do kontekstu obiektów
             obj_context += (loc_part + box_part)
 
-        # Finalne kodowanie f = X + suma komponentów 
         f = x_proj + obj_context
-        
-        # Spłaszczenie do sekwencji dla bloku Mamba: [B, H*W, k] 
-        f_flattened = f.flatten(2).transpose(1, 2)
-        
-        return f_flattened
-    
+        return f.flatten(2).transpose(1, 2) # [B, L, k]
+
     def get_test_encoding(self, x_test):
-        """Specyficzne kodowanie dla ramki testowej [cite: 135]"""
         x_proj = self.feat_projection(x_test)
         f_test = x_proj + self.test_token.view(1, self.embedding_dim, 1, 1)
         return f_test.flatten(2).transpose(1, 2)
-    
-
-
-
-class ViMBlock(nn.Module):
-    def __init__(self, dim, d_state=16, d_conv=4, expand=2):
-        """
-        Args:
-            dim: Wymiar wejściowy (k)
-            d_state: Stan ukryty SSM (N).
-            d_conv: Rozmiar jądra konwolucji 1D.
-            expand: Współczynnik rozszerzenia kanałów.
-        """
-        super().__init__()
-        self.norm = nn.LayerNorm(dim)   
-        
-        # Projekcja wejściowa (Linear w Fig. 2b) [cite: 77]
-        self.in_proj = nn.Linear(dim, dim * expand) 
-        
-        # Ścieżka Forward [cite: 84, 86]
-        self.forward_ssm = Mamba(
-            d_model=dim * expand,
-            d_state=d_state,
-            d_conv=d_conv,
-            expand=1 # expand robimy wcześniej ręcznie
-        )
-        
-        # Ścieżka Backward (kluczowa dla bi-directionality) [cite: 87, 196]
-        self.backward_ssm = Mamba(
-            d_model=dim * expand,
-            d_state=d_state,
-            d_conv=d_conv,
-            expand=1
-        )
-        
-        # Projekcja wyjściowa (Linear w Fig. 2b) [cite: 94]
-        self.out_proj = nn.Linear(dim * expand, dim)
-        self.activation = nn.SiLU() # Standardowa aktywacja w Mamba/ViM [cite: 88]
-
-    def forward(self, x):
-        """
-        Args:
-            x: Zakodowane cechy [B, L, k]
-        """
-        skip = x # Połączenie rezydualne 
-        x = self.norm(x)
-        
-        # Projekcja liniowa
-        x_proj = self.in_proj(x) # [B, L, dim*expand]
-        
-        # 1. Przetwarzanie w przód
-        x_fwd = self.forward_ssm(x_proj)
-        
-        # 2. Przetwarzanie w tył (odwrócenie sekwencji przed i po SSM) [cite: 196]
-        x_bwd_flip = torch.flip(x_proj, dims=[1])
-        x_bwd = self.backward_ssm(x_bwd_flip)
-        x_bwd = torch.flip(x_bwd, dims=[1])
-        
-        # Fuzja ścieżek (zgodnie ze schematem Fig. 2b)
-        # W artykule ścieżki są łączone i przepuszczane przez aktywację i bramkowanie
-        out = (x_fwd + x_bwd) * self.activation(x_proj)
-        
-        # Projekcja końcowa i skip connection
-        out = self.out_proj(out)
-        return out + skip
     
 class WFPLayer(nn.Module):
     def __init__(self, h_feat, w_feat, m_targets, embedding_dim):

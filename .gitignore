@@ -209,3 +209,5 @@ __marimo__/
 kaggle.json
 data/
 out/
+tb_logs/
+**/checkpoints/*
