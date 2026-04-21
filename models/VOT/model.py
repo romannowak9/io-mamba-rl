@@ -113,7 +113,10 @@ def vggm_create(num_classes=1000, pretrained='imagenet'):
         assert num_classes == settings['num_classes'], \
             "num_classes should be {}, but is {}".format(settings['num_classes'], num_classes)
         model = VGGM(num_classes=num_classes)
-        model.load_state_dict(torch.load('vggm-786f2434.pth'))
+        try:
+            model.load_state_dict(model_zoo.load_url(settings['url'], file_name='vggm-786f2434.pth'))
+        except FileNotFoundError:
+            print("Nie można załadować pretrenowanych wag dla VGGM. Pobierz ręcznie z {} i umieść w katalogu cache PyTorch.".format(settings['url']))
         model.input_space = settings['input_space']
         model.input_size = settings['input_size']
         model.input_range = settings['input_range']

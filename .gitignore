@@ -213,3 +213,5 @@ OTB/
 OTB50/
 OTB100/
 out/
+ADNet_Torch/
+tensorboardx_log/
