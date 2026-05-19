@@ -215,3 +215,5 @@ OTB100/
 out/
 ADNet_Torch/
 tensorboardx_log/
+debug_vot_examples/
+checkpoints/
