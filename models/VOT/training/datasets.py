@@ -68,7 +68,7 @@ def sample_noisy_box(gt_box: Sequence[float]) -> list[float]:
 
     noise = np.random.normal(
         loc=0.0,
-        scale=[0.3 * w, 0.3 * h, 0.1 * w, 0.1 * h],
+        scale=[0.25 * w, 0.25 * h, 0.1 * w, 0.1 * h],
     )
 
     sampled = [
@@ -119,6 +119,40 @@ def assign_action_label(
 
     return action_to_index(best_action, action_set)
 
+def list_vot_sequences(root_dirs):
+    sequences = []
+
+    for root_dir in [Path(p) for p in root_dirs]:
+        for sequence_dir in sorted(root_dir.iterdir()):
+            if sequence_dir.is_dir() and (sequence_dir / "groundtruth.txt").exists():
+                sequences.append(sequence_dir.name)
+
+    return sorted(set(sequences))
+
+def sample_box_with_target_class(
+    gt_box,
+    img_width,
+    img_height,
+    positive_iou_threshold=0.7,
+    target_positive=True,
+    max_attempts=50,
+):
+    fallback_box = None
+
+    for _ in range(max_attempts):
+        sample_box = sample_noisy_box(gt_box)
+        sample_box = clip_box(sample_box, img_width, img_height)
+
+        sample_iou = iou(sample_box, gt_box)
+        is_positive = sample_iou > positive_iou_threshold
+
+        if fallback_box is None:
+            fallback_box = sample_box
+
+        if is_positive == target_positive:
+            return sample_box
+
+    return fallback_box
 
 class VOTSupervisedDataset(Dataset):
     """
@@ -139,7 +173,10 @@ class VOTSupervisedDataset(Dataset):
         input_size: tuple[int, int] = (112, 112),
         history_length: int = 10,
         positive_iou_threshold: float = 0.7,
+        target_positive_ratio: Optional[float] = 0.4,
+        max_resample_attempts: Optional[int] = 50,
         transform: Optional[object] = None,
+        sequence_filter: Optional[set[str]] = None,
     ):
         self.root_dirs = [Path(p) for p in root_dirs]
         self.action_set = list(action_set)
@@ -148,11 +185,15 @@ class VOTSupervisedDataset(Dataset):
         self.history_length = history_length
         self.positive_iou_threshold = positive_iou_threshold
         self.transform = transform
+        self.sequence_filter = sequence_filter
 
         self.num_actions = len(self.action_set)
         self.history_dim = self.history_length * self.num_actions
 
         self.items = self._index_sequences()
+
+        self.target_positive_ratio = target_positive_ratio
+        self.max_resample_attempts = max_resample_attempts
 
         if len(self.items) == 0:
             raise RuntimeError(f"No VOT frames found in: {self.root_dirs}")
@@ -170,6 +211,9 @@ class VOTSupervisedDataset(Dataset):
 
                 gt_path = sequence_dir / "groundtruth.txt"
                 if not gt_path.exists():
+                    continue
+
+                if self.sequence_filter is not None and sequence_dir.name not in self.sequence_filter:
                     continue
 
                 frames = find_frames(sequence_dir)
@@ -209,8 +253,16 @@ class VOTSupervisedDataset(Dataset):
         img_height, img_width = image.shape[:2]
 
         gt_box = clip_box(item["gt_box"], img_width, img_height)
-        sample_box = sample_noisy_box(gt_box)
-        sample_box = clip_box(sample_box, img_width, img_height)
+        target_positive = np.random.rand() < self.target_positive_ratio
+
+        sample_box = sample_box_with_target_class(
+            gt_box=gt_box,
+            img_width=img_width,
+            img_height=img_height,
+            positive_iou_threshold=self.positive_iou_threshold,
+            target_positive=target_positive,
+            max_attempts=self.max_resample_attempts,
+)
 
         patch = crop_patch(image, sample_box)
 
