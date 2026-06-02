@@ -127,10 +127,57 @@ def visualize_sequence(sequence_dir, output_dir=None, stride=20):
     cv2.destroyAllWindows()
 
 
+def visualize_sequence_rect(sequence_dir, output_dir=None, stride=20):
+
+    sequence_dir_rect = sequence_dir  + '/img'
+    sequence_dir = Path(sequence_dir)
+    sequence_dir_rect = Path(sequence_dir_rect)
+
+
+    gt_path = sequence_dir / "groundtruth_rect.txt"
+    boxes = read_groundtruth(gt_path)
+
+    
+
+    frames = find_frames(sequence_dir_rect)
+
+    if len(frames) == 0:
+        raise RuntimeError(f"No image frames found in {sequence_dir}")
+
+    if len(frames) != len(boxes):
+        print(f"Warning: {len(frames)} frames, {len(boxes)} ground-truth boxes")
+
+    if output_dir is not None:
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    n = min(len(frames), len(boxes))
+
+    for i in range(0, n, stride):
+        frame = cv2.imread(str(frames[i]))
+        print(f"Visualizing {frames[i]} with GT box {boxes[i]}")
+        if frame is None:
+            print(f"Could not read {frames[i]}")
+            continue
+
+        vis = draw_example(frame, boxes[i], label=f"frame {i}")
+
+        if output_dir is not None:
+            out_path = output_dir / f"{sequence_dir.name}_{i:04d}.jpg"
+            cv2.imwrite(str(out_path), vis)
+        else:
+            cv2.imshow(sequence_dir.name, vis)
+            key = cv2.waitKey(0)
+            if key == 27:
+                break
+
+    cv2.destroyAllWindows()
+
+
 if __name__ == "__main__":
-    visualize_sequence(
-        sequence_dir="data/VOT2013/bicycle",
-        output_dir="debug_vot_examples",
+    visualize_sequence_rect(
+        sequence_dir="data/OTB/OTB50/Biker",
+        output_dir="out/debug_vot_examples",
         stride=20,
     )
 
