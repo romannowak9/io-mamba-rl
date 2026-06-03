@@ -8,6 +8,8 @@ sys.path.append(os.path.abspath('./Mamba_Trackers'))  # Dodajemy ścieżkę do k
 from ssm_tracker.models.MambaTrack import MambaTrack 
 
 
+# UWAGA: Trzeba sklonować do root projektu repozytorium Mamba_Trackers
+
 def load_mamba_model(config_path):
     """Ładuje konfigurację z pliku YAML i inicjalizuje MambaTrack sekcją 'train'."""
     with open(config_path, 'r') as f:
