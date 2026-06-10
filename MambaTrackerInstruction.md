@@ -54,6 +54,8 @@ python3 -m tools.display_all_vis
 
 ## 4. Wyniki - ewaluacja
 
+Tych skryptów jeszcze nie ma - ale przydałby się coś do obliczania metryk, żeby można było to jakos ocenić (chociaż śledzenie to nie wiem jak, skoro nie ma odpowiedniego gt)
+
 Skrypt do ewaluacja detekcji
 ```bash
 python tools/det_eval_afo.py --det_path out/det_results/afo/train --data_root data/afo/train --conf_thresh 0.5
