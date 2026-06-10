@@ -1,5 +1,9 @@
 # Example usage:
+# Stały rozmiar:
 # python3 tools/gen_det_afo.py --split train --data_root ./data/afo --exp_file ByteTrack/exps/example/mot/yolox_x_mix_det.py --model_path ByteTrack/weights/yolox_x_mix_det.pth --generate_meta_data --vis
+#
+# Oryginalny rozmiar (dynamiczny):
+# python3 tools/gen_det_afo.py --split train --data_root ./data/afo --exp_file ByteTrack/exps/example/mot/yolox_x_mix_det.py --model_path ByteTrack/weights/yolox_x_mix_det.pth --generate_meta_data --vis --native_size
 
 import argparse
 import os
@@ -22,9 +26,12 @@ def get_args():
     parser.add_argument('--exp_file', required=True, type=str, help='Ścieżka do pliku exp YOLOX')
     parser.add_argument('--model_path', required=True, type=str, help='Ścieżka do wag modelu (.pth)')
     
-    parser.add_argument('--img_size', nargs='+', type=int, default=[800, 1440], help='Rozdzielczość testowa [H, W]')
+    # Parametry kontroli rozdzielczości wejściowej
+    parser.add_argument('--img_size', nargs='+', type=int, default=[800, 1440], help='Rozdzielczość testowa [H, W] (używana tylko, gdy nie wybrano --native_size)')
+    parser.add_argument('--native_size', action='store_true', help='Użyj oryginalnego rozmiaru zdjęcia (zaokrąglonego do wielokrotności 32) zamiast sztywnego --img_size')
+    
     parser.add_argument('--high_thresh', type=float, default=0.5, help='Próg ufności dla wizualizacji')
-    parser.add_argument('--save_dir', type=str, default='out/odet_results/afo/{split}', help='Katalog zapisu wyników')
+    parser.add_argument('--save_dir', type=str, default='out/det_results/afo/{split}', help='Katalog zapisu wyników')
     parser.add_argument('--device', type=str, default='0', help='Karta GPU lub cpu')
     parser.add_argument('--fp16', action='store_true', help='Użyj precyzji fp16')
     parser.add_argument('--vis', action='store_true', help='Wizualizacja detekcji')
@@ -106,7 +113,6 @@ def plot_img(img, seq_name, frame_id, results, base_save_dir):
 
 def main(args):
     # Inicjalizacja konfiguracji eksperymentu YOLOX
-    # Uwaga: jako dataset_name podajemy oryginalną nazwę (np. dancetrack/visdrone) zgodnie z Twoim plikiem exp
     exp = get_exp(args.exp_file, None)
 
     device = select_device(args.device)
@@ -120,7 +126,7 @@ def main(args):
     model.load_state_dict(ckpt["model"])
     logger.info("Wagi modelu załadowane pomyślnie.")
 
-    logger.info("Fuzowanie warstw modelu (Model Fusion)...")
+    logger.info("Łączenie warstw modelu (Model Fusion)...")
     model = fuse_model(model)
 
     if args.fp16:
@@ -178,8 +184,16 @@ def main(args):
         for frame_idx, img_path in tqdm(frame_list, desc=f"Sekwencja {seq_id}"):
             img_ori = cv2.imread(str(img_path))
             
-            # Preprocessing tożsamy z oryginalnym YOLOX
-            img, ratio = preproc(img_ori, args.img_size, mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
+            # --- POPRAWKA: Dynamiczny wybór rozdzielczości przetwarzania ---
+            if args.native_size:
+                h_ori, w_ori = img_ori.shape[:2]
+                current_img_size = (int(np.ceil(h_ori / 32) * 32), int(np.ceil(w_ori / 32) * 32))
+            else:
+                current_img_size = args.img_size
+            # ---------------------------------------------------------------
+            
+            # Preprocessing z użyciem wybranego rozmiaru
+            img, ratio = preproc(img_ori, current_img_size, mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
             img = torch.from_numpy(img).unsqueeze(0).float().to(device)
 
             if args.fp16:
