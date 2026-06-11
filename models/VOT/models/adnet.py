@@ -4,6 +4,7 @@ import torch.nn.functional as F
 
 
 class ADNet(nn.Module):
+    """Klasa sieci ADNet do śledzenia obiektów w stylu VOT. Wersja przed upgradem z backbonem z VGG"""
     def __init__(self, num_actions: int, history_length: int = 10):
         super().__init__()
 
@@ -86,7 +87,7 @@ if __name__ == "__main__":
     patch = torch.randn(4, 3, 112, 112)
     history = torch.zeros(4, 110)
 
-    action_logits, confidence_logits = model(patch, history)
+    action_logits, confidence_logits = model(patch, history) ##Uruchamia forward()
 
     print(action_logits.shape)       # torch.Size([4, 11])
     print(confidence_logits.shape)   # torch.Size([4, 2])

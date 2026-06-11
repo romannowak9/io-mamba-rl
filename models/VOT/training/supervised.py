@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from models.VOT.models.adnet import ADNet
+from models.VOT.models.vgg_adnet import ADNet, VGGMBackbone, load_vggm_weights
 from models.VOT.tracking.actions import ORIGINAL_ADNET_ACTIONS
 from models.VOT.training.datasets import VOTSupervisedDataset, list_vot_sequences
 
@@ -13,16 +13,15 @@ from models.VOT.training.datasets import VOTSupervisedDataset, list_vot_sequence
 def make_optimizer(model):
     return torch.optim.SGD(
         [
-            {"params": model.features.parameters(), "lr": 2e-4},
-            {"params": model.fc4.parameters(), "lr": 2e-3},
-            {"params": model.fc5.parameters(), "lr": 2e-3},
-            {"params": model.fc6_action.parameters(), "lr": 2e-3},
-            {"params": model.fc7_confidence.parameters(), "lr": 2e-3},
+            {"params": model.backbone.parameters(), "lr": 5e-5},
+            {"params": model.fc4.parameters(), "lr": 1e-3},
+            {"params": model.fc5.parameters(), "lr": 1e-3},
+            {"params": model.fc6_action.parameters(), "lr": 1e-3},
+            {"params": model.fc7_confidence.parameters(), "lr": 1e-3},
         ],
         momentum=0.9,
         weight_decay=1e-5,
     )
-
 
 def compute_metrics(model, loader, device, optimizer=None):
     is_training = optimizer is not None
@@ -50,6 +49,7 @@ def compute_metrics(model, loader, device, optimizer=None):
             histories = batch["history"].to(device, non_blocking=True)
             action_labels = batch["action_label"].to(device, non_blocking=True)
             class_labels = batch["class_label"].to(device, non_blocking=True)
+            # Class labels = czy próbka należy do poprawnie scentrowanego bboxa (> 0.7 Iou)
 
             action_logits, confidence_logits = model(patches, histories)
 
@@ -135,7 +135,7 @@ def print_metrics(epoch, train_metrics, val_metrics):
 def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    checkpoint_dir = Path("checkpoints")
+    checkpoint_dir = Path("checkpoints/supervised_vot")
     checkpoint_dir.mkdir(exist_ok=True)
 
     action_set = ORIGINAL_ADNET_ACTIONS
@@ -146,8 +146,13 @@ def main():
         "data/VOT2015",
         "data/VOT2016",
         "data/OTB/OTB50",
-        "data/OTB/OTB100"
+        "data/OTB/OTB100",
+        "data/TrackingDataset"
     ]
+
+    #Tracking Dataset: https://www.kaggle.com/datasets/kmader/videoobjecttracking?resource=download
+
+
 
     all_sequences = list_vot_sequences(root_dirs)
 
@@ -160,27 +165,40 @@ def main():
     val_sequences = set(all_sequences[:val_count])
     train_sequences = set(all_sequences[val_count:])
 
+    #list_train sequences
+    print("Train sequences:")
+    for seq in train_sequences:
+        print(f"  - {seq}")
+    print("Val sequences:")
+    for seq in val_sequences:
+        print(f"  - {seq}")
+
     print(f"Train sequences: {len(train_sequences)}")
     print(f"Val sequences: {len(val_sequences)}")
+
+    #save_train_sequences_to_file 
+    with open("train_sequences.txt", "w") as f:
+        for seq in train_sequences:
+            f.write(f"{seq}\n")
 
     train_dataset = VOTSupervisedDataset(
         root_dirs=root_dirs,
         action_set=action_set,
-        samples_per_frame=10,
+        samples_per_frame=4,
         input_size=(112, 112),
         history_length=10,
         sequence_filter=train_sequences,
-        target_positive_ratio=0.3,
+        target_positive_ratio=0.25,
     )
 
     val_dataset = VOTSupervisedDataset(
         root_dirs=root_dirs,
         action_set=action_set,
-        samples_per_frame=3,
+        samples_per_frame=4,
         input_size=(112, 112),
         history_length=10,
         sequence_filter=val_sequences,
-        target_positive_ratio=0.3,
+        target_positive_ratio=0.25,
     )
 
     train_loader = DataLoader(
@@ -200,17 +218,25 @@ def main():
         pin_memory=True,
         drop_last=False,
     )
+    backbone = VGGMBackbone()
+
+    vggm_weights = Path("models/pretrained/vggm.pth")
+    if vggm_weights.exists():
+        load_vggm_weights(backbone, str(vggm_weights), strict=False)
+    else:
+        print(f"Warning: VGG-M weights not found at {vggm_weights}. Training backbone from scratch.")
 
     model = ADNet(
         num_actions=len(action_set),
         history_length=10,
+        backbone=backbone,
     ).to(device)
 
     optimizer = make_optimizer(model)
 
-    num_epochs = 30
+    num_epochs = 20
     early_stopping = EarlyStopping(
-        patience=10,
+        patience=5,
         min_delta=0.001,
         mode="max",
     )
@@ -250,7 +276,7 @@ def main():
                 epoch=epoch,
                 action_set=action_set,
                 metrics={"train": train_metrics, "val": val_metrics},
-                path=checkpoint_dir / "adnet_sl_best.pt",
+                path=checkpoint_dir / "adnet_sl_vgg_best_2.pt",
             )
             print("Saved new best checkpoint.")
 

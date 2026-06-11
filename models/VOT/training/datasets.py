@@ -15,6 +15,7 @@ from models.VOT.tracking.actions import (
 
 
 def polygon_to_bbox(poly: Sequence[float]) -> list[float]:
+    """Zamienia reprezentację BB jako polygon (8 elementów) na bounding box (środek_x, środek_y, szerokość, wysokość)."""
     xs = poly[0::2]
     ys = poly[1::2]
 
@@ -40,7 +41,9 @@ def read_groundtruth(gt_path: Path) -> list[list[float]]:
 
             values = [float(v) for v in line.replace(",", " ").split()]
 
-            if len(values) == 8:
+            if any(np.isnan(values)):
+                box = [np.nan, np.nan, np.nan, np.nan]
+            elif len(values) == 8:
                 box = polygon_to_bbox(values)
             elif len(values) == 4:
                 x, y, w, h = values
@@ -89,6 +92,9 @@ def assign_action_label(
     img_height: int,
     positive_iou_threshold: float = 0.7,
 ) -> int:
+    
+    """Przypisuje etykietę akcji na podstawie bounding boxa próbki i gt_box -- dla losowo zaszumionego BBoxa treningowego dopiera akcję która
+    najlepiej poprawia IOU"""
     current_iou = iou(sample_box, gt_box)
 
     if current_iou > positive_iou_threshold and "stop" in action_set:
@@ -119,15 +125,27 @@ def assign_action_label(
 
     return action_to_index(best_action, action_set)
 
+
 def list_vot_sequences(root_dirs):
     sequences = []
 
     for root_dir in [Path(p) for p in root_dirs]:
-        for sequence_dir in sorted(root_dir.iterdir()):
-            if sequence_dir.is_dir() and (sequence_dir / "groundtruth.txt").exists():
-                sequences.append(sequence_dir.name)
 
-    return sorted(set(sequences))
+        dataset_name = root_dir.name
+
+        for sequence_dir in sorted(root_dir.iterdir()):
+
+            if not sequence_dir.is_dir():
+                continue
+
+            if not (sequence_dir / "groundtruth.txt").exists():
+                continue
+
+            sequence_id = f"{dataset_name}/{sequence_dir.name}"
+
+            sequences.append(sequence_id)
+
+    return sorted(sequences)
 
 def sample_box_with_target_class(
     gt_box,
@@ -156,7 +174,34 @@ def sample_box_with_target_class(
 
 class VOTSupervisedDataset(Dataset):
     """
-    Supervised ADNet-style dataset for VOT2013/VOT2014/VOT2015.
+    Dataset do uczenia nadzorowanego sieci ADNET dla zbioru danych typu VOT 2013/14/15.
+
+    Wejścia:
+    
+    root_dirs = [
+        "data/VOT2013",
+        "data/VOT2014",
+        "data/VOT2015",
+        ...
+    ]
+
+    Spodziewany układ datasetu:
+
+    data/VOT2013:
+    |
+    --bicycle 
+       |
+       00000001.jpg
+       00000002.jpg
+       ...
+       groundtruth.txt
+    |
+    --bolt
+      |
+      ...
+    --car
+
+    (etc)
 
     Returns:
         patch: FloatTensor [3, H, W]
@@ -176,7 +221,7 @@ class VOTSupervisedDataset(Dataset):
         target_positive_ratio: Optional[float] = 0.4,
         max_resample_attempts: Optional[int] = 50,
         transform: Optional[object] = None,
-        sequence_filter: Optional[set[str]] = None,
+        sequence_filter: Optional[set[str]] = None,  # Używany by zagwarantować odrędbność datasetu treningowego od walidacyjnego
     ):
         self.root_dirs = [Path(p) for p in root_dirs]
         self.action_set = list(action_set)
@@ -213,7 +258,13 @@ class VOTSupervisedDataset(Dataset):
                 if not gt_path.exists():
                     continue
 
-                if self.sequence_filter is not None and sequence_dir.name not in self.sequence_filter:
+                dataset_name = root_dir.name
+                sequence_id = f"{dataset_name}/{sequence_dir.name}"
+
+                if (
+                    self.sequence_filter is not None
+                    and sequence_id not in self.sequence_filter
+                ):
                     continue
 
                 frames = find_frames(sequence_dir)
@@ -226,6 +277,11 @@ class VOTSupervisedDataset(Dataset):
 
                 for frame_idx in range(n):
                     for sample_idx in range(self.samples_per_frame):
+                        #chech_for_nans
+                        gt_box_current = gt_boxes[frame_idx]
+                        if gt_box_current[0] is np.NaN:
+                            continue
+
                         items.append(
                             {
                                 "frame_path": frames[frame_idx],

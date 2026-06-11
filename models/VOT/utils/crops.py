@@ -8,7 +8,13 @@ import cv2
 import numpy as np
 
 def crop_patch(image, box):
+    """Zapobiega wyjściu poza granice obrazu"""
     x_center, y_center, width, height = box
+    
+    #check for NaN:
+    if np.isnan(x_center) or np.isnan(y_center) or np.isnan(width) or np.isnan(height):
+        return None
+
     x1 = int(round(x_center - width / 2))
     y1 = int(round(y_center - height / 2))
     x2 = int(round(x_center + width / 2))
