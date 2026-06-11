@@ -175,3 +175,5 @@ xmltodict==0.13.0
 yarl==1.23.0
 zstd==1.5.7.3
 mamba-ssm
+tensorboardX==2.6.5
+pathlib==1.0.1
