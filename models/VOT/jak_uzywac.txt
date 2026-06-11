@@ -1,0 +1,61 @@
+Obsługa VOT:
+
+1. Proces uczenia
+Proces uczenia składa się z 3 etapów, z których dwa są zaimplementowane:
+- Uczenie nadzorowane: model uczy się jak dopasowywać właściwą akcję, mającą poprawiać pozycję BB
+- Uczenie z wzmocnieniem: model uczy się jak polityki akcji z uwzględnieniem historii wcześniejszych akcji
+
+Aby wyuczyć model należy uruchomić:
+a. training/supervised.py
+python3 -m models.VOT.training.supervised
+
+Istotne parametry:
+- target_positive_ratio: domyślnie na 0.25 -- dataloader dobiera próbki tak by około 25% z nich dobrze pokrywało się z obiektami  
+
+(class_label = int(iou(sample_box, gt_box) > self.positive_iou_threshold)).
+- vggm_weights: należy za wczasu pobrać 
+(https://data.lip6.fr/cadene/pretrainedmodels/vggm-786f2434.pth)
+
+- dane:
+Użyłem VOT 2013-16 
+OTB 50 i 100 (skrypty do pobrania dostępne na branchu)
+https://www.kaggle.com/datasets/kmader/videoobjecttracking?resource=download --> obrobiony tak by pasował. W skryptach jako TrackingDataset
+
+
+
+Z moich eksperymentów ~25% było ok. Przy uczeniu trzeba monitorować metryki względem positive ratio, bo jak są równe to znaczy że model np. zawsze uznaje że opłaca się zakończyć pracę.
+
+
+b. training/rl_training
+python3 -m models.VOT.training.rl_training
+
+Istotne:
+
+2. Zbior danych
+Powinien być w takim formacie jak VOT 2013/14/15/...
+
+
+    Spodziewany układ datasetu:
+
+    data/VOT2013:
+    |
+    --bicycle 
+       |
+       00000001.jpg
+       00000002.jpg
+       ...
+       groundtruth.txt
+    |
+    --bolt
+      |
+      ...
+    --car
+
+    (etc)
+
+OTB trzeba spłaszczyć -- skrypt fix_dataset
+TrackingDataset ma NANy w bounding boxach -- jest funkcja do usuwania odpowiednich elementów sekwencji w fix_dataset
+
+3. Testowanie na wybranej sekwencji:
+
+python3 -m models.VOT.tracking.tracking_on_sequence
