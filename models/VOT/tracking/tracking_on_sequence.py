@@ -40,6 +40,7 @@ def rollout_one_frame(
     gt_box,
     action_set,
     device,
+    history=None,
     input_size=(112, 112),
     history_length=10,
     max_steps=10,
@@ -49,7 +50,13 @@ def rollout_one_frame(
     img_height, img_width = frame.shape[:2]
 
     box = list(map(float, initial_box))
-    history = ActionHistory(action_set, history_length=history_length)
+    if history is None:
+        history = ActionHistory(action_set, history_length=history_length)
+    else:
+        #ensure history is ActionHistory()
+        if not isinstance(history, ActionHistory):
+            history = ActionHistory(action_set, history_length=history_length)
+            print("History is not an instance of ActionHistory. Creating a new one.")
 
     actions = []
     log_probs = []
@@ -110,6 +117,7 @@ def rollout_one_frame(
         "reward": reward,
         "final_iou": final_iou,
         "num_steps": len(actions),
+        "history": history
     }
 
 
@@ -158,6 +166,7 @@ def evaluate_sequence(
     max_frames=None,
     display=True,
     save_video_path=None,
+    history_length=10
 ):
     sequence_dir = Path(sequence_dir)
 
@@ -194,6 +203,8 @@ def evaluate_sequence(
     total_loop_time = 0
     prev_loop_time = time.time()
 
+    history = ActionHistory(action_set, history_length=history_length)
+
     for frame_idx in range(start_frame + 1, n):
 
         frame = cv2.imread(str(frames[frame_idx]))
@@ -207,6 +218,7 @@ def evaluate_sequence(
         #record time
         time_1 = time.time()
 
+
         result = rollout_one_frame(
             model=model,
             frame=frame,
@@ -214,6 +226,7 @@ def evaluate_sequence(
             gt_box=gt_box,
             action_set=action_set,
             device=device,
+            history=history,
             sample_actions=False,
         )
 
@@ -224,6 +237,7 @@ def evaluate_sequence(
 
         predicted_box = result["final_box"]
         current_box = predicted_box
+        history = result["history"]
 
         ious.append(result["final_iou"])
         rewards.append(result["reward"])
@@ -326,8 +340,9 @@ if __name__ == "__main__":
         backbone=backbone,
     ).to(device)
 
-    checkpoint_location = "checkpoints/adnet_sl_vgg_best_1.pt"
-    checkpoint = torch.load(checkpoint_location, map_location=device)
+    #checkpoint_location = "checkpoints/adnet_sl_vgg_best_1.pt"
+    checkpoint_location = "checkpoints/rl_vot/rl_training_best_1.pt"
+    checkpoint = torch.load(checkpoint_location, map_location=device, weights_only=False)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
@@ -341,3 +356,26 @@ if __name__ == "__main__":
         display=True,
         save_video_path="debug_adnet_car1.mp4",
     )
+
+
+#SL:
+# Mean IoU: 0.7071
+# Success rate IoU>0.7: 0.5779
+# Average steps: 2.66
+# Mean reward: 0.1558
+# Final frame IOU: 0.6524
+# Total evaluation duration: 2.58 seconds
+# Average evaluation duration per frame: 0.0130 seconds
+# Total loop time (with display and read): 11.79 seconds
+# Average loop time per frame (with display and read): 0.0593 seconds
+
+#RL 1:
+# Mean IoU: 0.7482
+# Success rate IoU>0.7: 0.8894
+# Average steps: 4.34
+# Mean reward: 0.7789
+# Final frame IOU: 0.7477
+# Total evaluation duration: 3.62 seconds
+# Average evaluation duration per frame: 0.0182 seconds
+# Total loop time (with display and read): 12.47 seconds
+# Average loop time per frame (with display and read): 0.0626 seconds

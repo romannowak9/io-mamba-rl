@@ -5,7 +5,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from models.VOT.models.vgg_adnet import ADNet, VGGMBackbone, load_vggm_weights
-from models.VOT.tracking.actions import ORIGINAL_ADNET_ACTIONS
+from models.VOT.tracking.actions import ORIGINAL_ADNET_ACTIONS, ActionHistory
 from models.VOT.training.dataset_rl import VOTSequenceDataset
 
 from models.VOT.tracking.tracking_on_sequence import rollout_one_frame
@@ -92,6 +92,8 @@ def compute_rl_metrics(
                 current_box = gt_boxes[0].tolist()
                 sequence_losses = []
 
+                history = ActionHistory(action_set, history_length=10)
+
                 for t in range(1, len(frames)):
                     gt_box = gt_boxes[t].tolist()
 
@@ -102,12 +104,14 @@ def compute_rl_metrics(
                         gt_box=gt_box,
                         action_set=action_set,
                         device=device,
+                        history=history,
                         max_steps=max_steps,
                         reward_type=reward_type,
                         sample_actions=is_training,
                     )
 
                     current_box = result["final_box"]
+                    history=result["history"]
 
                     reward = result["reward"]
                     final_iou = result["final_iou"]

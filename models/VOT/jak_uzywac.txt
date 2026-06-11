@@ -56,4 +56,6 @@ Powinien być w takim formacie jak VOT 2013/14/15/...
 OTB trzeba spłaszczyć -- skrypt fix_dataset
 TrackingDataset ma NANy w bounding boxach -- jest funkcja do usuwania odpowiednich elementów sekwencji w fix_dataset
 
+3. Testowanie na wybranej sekwencji:
 
+python3 -m models.VOT.tracking.tracking_on_sequence
