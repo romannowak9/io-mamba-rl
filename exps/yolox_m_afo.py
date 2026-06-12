@@ -19,8 +19,8 @@ class Exp(MyExp):
         # =====================================================================
         # Te dwie wartości definiują głębokość i szerokość sieci YOLOX-X.
         # Muszą dokładnie odpowiadać architekturze wag .pth, które pobrałeś.
-        self.depth = 1.33
-        self.width = 1.25
+        self.depth = 0.67
+        self.width = 0.75
         
         # Nazwa eksperymentu generowana automatycznie na podstawie nazwy pliku
         self.exp_name = os.path.split(os.path.realpath(__file__))[1].split(".")[0]
