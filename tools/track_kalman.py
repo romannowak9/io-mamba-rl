@@ -19,7 +19,7 @@ from utils.helpers import sort_key_from_filename
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../Mamba_Trackers/kalman_tracker")))
 
-from naive_tracker import NaiveTracker
+from Mamba_Trackers.kalman_tracker.naive_tracker import NaiveTracker
 
 
 def get_args():
