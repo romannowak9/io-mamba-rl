@@ -1,5 +1,5 @@
 import os
-from yolox.exp import Exp as MyExp
+from ByteTrack.yolox.exp import Exp as MyExp
 
 class Exp(MyExp):
     def __init__(self):
