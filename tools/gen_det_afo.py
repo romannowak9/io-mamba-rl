@@ -16,8 +16,20 @@ from tqdm import tqdm
 
 # Importy z repozytorium YOLOX/Mamba_Trackers
 from ByteTrack.yolox.data.data_augment import preproc
+from ByteTrack.yolox.data.data_augment import preproc
 from ByteTrack.yolox.exp import get_exp
-from ByteTrack.yolox.utils import fuse_model, get_model_info, postprocess
+from ByteTrack.yolox.utils.model_utils import fuse_model, get_model_info
+from ByteTrack.yolox.utils.boxes import postprocess
+
+import os
+import sys
+
+PROJECT_ROOT = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..")
+)
+
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 def get_args():
     parser = argparse.ArgumentParser(description="Generowanie detekcji YOLOX dla zbioru AFO")

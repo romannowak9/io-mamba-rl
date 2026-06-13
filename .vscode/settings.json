@@ -1,0 +1,8 @@
+{
+    "python.analysis.extraPaths": [
+        ".",
+        "./ByteTrack",
+        "./Mamba_Trackers"
+    ],
+    "python.envFile": "${workspaceFolder}/.env"
+}
