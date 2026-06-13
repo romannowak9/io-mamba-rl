@@ -1,0 +1,16 @@
+sudo apt install python3.10 python3.10-venv
+
+wymuś użycie pythona 3.10 przy tworzeniu venva:
+pyenv local 3.10.14
+python --version
+
+
+python3.10 -m venv .venv
+source .venv/bin/activate
+
+pip install --upgrade pip setuptools wheel
+
+git clone https://github.com/ifzhang/ByteTrack.git
+cd ByteTrack
+
+pip install --no-build-isolation -e .

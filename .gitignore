@@ -217,3 +217,4 @@ tensorboardx_log/
 debug_vot_examples/
 tb_logs/
 **/checkpoints/*
+out/

@@ -1,6 +1,8 @@
 import os
 
-from yolox.exp import MoTExp
+from ByteTrack.yolox.exp import MoTExp
+from ByteTrack.yolox.data import COCODataset, TrainTransform
+from ByteTrack.yolox.data.dataloading import get_yolox_datadir
 
 class Exp(MoTExp):
     def __init__(self):
@@ -54,7 +56,7 @@ class Exp(MoTExp):
         Podczas uruchamiania 'gen_det_afo.py' ta funkcja JEST IGNOROWANA,
         ponieważ nasz skrypt sam czyta pliki bezpośrednio z folderów.
         """
-        from yolox.data import COCODataset, TrainTransform
+
         
         return COCODataset(
             data_dir=os.path.join(get_yolox_datadir(), "afo"),
