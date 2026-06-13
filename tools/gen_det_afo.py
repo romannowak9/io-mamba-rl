@@ -1,9 +1,31 @@
 # Example usage:
-# Stały rozmiar:
-# python3 tools/gen_det_afo.py --split train --data_root ./data/afo --exp_file ByteTrack/exps/example/mot/yolox_x_mix_det.py --model_path ByteTrack/weights/yolox_x_mix_det.pth --generate_meta_data --vis
-#
-# Oryginalny rozmiar (dynamiczny):
-# python3 tools/gen_det_afo.py --split train --data_root ./data/afo --exp_file ByteTrack/exps/example/mot/yolox_x_mix_det.py --model_path ByteTrack/weights/yolox_x_mix_det.pth --generate_meta_data --vis --native_size
+
+#Dla yolox_x:
+# ```bash
+# python tools/gen_det_afo.py \
+#     --split train \
+#     --data_root ./data/afo \
+#     --exp_file exps/yolox_x_afo.py \
+#     --model_path weights/yolox_x.pth \
+#     --save_dir out/det_results_yolox_x/afo/{split} \
+#     --generate_meta_data \
+#     --vis \
+#     --native_size  # Zachowaj oryginalny rozmiar obrazów
+# ```
+
+# Dla yolox_m:
+# ```bash
+# python tools/gen_det_afo.py \
+#     --split train \
+#     --data_root ./data/afo \
+#     --exp_file exps/yolox_m_afo.py \
+#     --model_path weights/yolox_m.pth \
+#     --save_dir out/det_results_yolox_m/afo/{split} \
+#     --generate_meta_data \
+#     --vis \
+#     --native_size  # Zachowaj oryginalny rozmiar obrazów, usun flage dla stalego rozmiaru
+# ```
+
 
 import argparse
 import os
