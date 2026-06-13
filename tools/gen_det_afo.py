@@ -15,9 +15,9 @@ from loguru import logger
 from tqdm import tqdm
 
 # Importy z repozytorium YOLOX/Mamba_Trackers
-from yolox.data.data_augment import preproc
-from yolox.exp import get_exp
-from yolox.utils import fuse_model, get_model_info, postprocess
+from ByteTrack.yolox.data.data_augment import preproc
+from ByteTrack.yolox.exp import get_exp
+from ByteTrack.yolox.utils import fuse_model, get_model_info, postprocess
 
 def get_args():
     parser = argparse.ArgumentParser(description="Generowanie detekcji YOLOX dla zbioru AFO")
