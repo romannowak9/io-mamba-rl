@@ -308,7 +308,7 @@ if __name__ == "__main__":
                 epoch=epoch,
                 action_set=action_set,
                 metrics={"train": train_metrics, "val": val_metrics},
-                path=checkpoint_dir / "rl_training_best_1.pt",
+                path=checkpoint_dir / "rl_training_best_2.pt",
             )
             print("Saved new best checkpoint.")
 
