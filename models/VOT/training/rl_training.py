@@ -203,13 +203,13 @@ if __name__ == "__main__":
         backbone=backbone,
     ).to(device)
 
-    checkpoint_location = "checkpoints/adnet_sl_vgg_best_1.pt"
+    checkpoint_location = "checkpoints/supervised_vot/adnet_sl_vgg_best_afo_1.pt"
     checkpoint = torch.load(checkpoint_location, map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
 
     
     #load training sequences from file
-    training_sequences_path = "train_sequences.txt"
+    training_sequences_path = "train_sequences_afo.txt"
     with open(training_sequences_path, "r") as f:
         training_sequences = {line.strip() for line in f}
     
@@ -308,7 +308,7 @@ if __name__ == "__main__":
                 epoch=epoch,
                 action_set=action_set,
                 metrics={"train": train_metrics, "val": val_metrics},
-                path=checkpoint_dir / "rl_training_best_2.pt",
+                path=checkpoint_dir / "rl_training_best_afo_1.pt",
             )
             print("Saved new best checkpoint.")
 

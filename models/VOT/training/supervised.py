@@ -147,7 +147,9 @@ def main():
         "data/VOT2016",
         "data/OTB/OTB50",
         "data/OTB/OTB100",
-        "data/TrackingDataset"
+        "data/TrackingDataset",
+        "data/afo/train/sequences_processed",
+
     ]
 
     #Tracking Dataset: https://www.kaggle.com/datasets/kmader/videoobjecttracking?resource=download
@@ -177,7 +179,7 @@ def main():
     print(f"Val sequences: {len(val_sequences)}")
 
     #save_train_sequences_to_file 
-    with open("train_sequences.txt", "w") as f:
+    with open("train_sequences_afo.txt", "w") as f:
         for seq in train_sequences:
             f.write(f"{seq}\n")
 
@@ -264,7 +266,7 @@ def main():
             epoch=epoch,
             action_set=action_set,
             metrics={"train": train_metrics, "val": val_metrics},
-            path=checkpoint_dir / f"adnet_sl_epoch_{epoch:03d}.pt",
+            path=checkpoint_dir / f"adnet_sl_afo_epoch_{epoch:03d}.pt",
         )
 
         should_stop, improved = early_stopping.step(val_metrics["action_acc"])
@@ -276,7 +278,7 @@ def main():
                 epoch=epoch,
                 action_set=action_set,
                 metrics={"train": train_metrics, "val": val_metrics},
-                path=checkpoint_dir / "adnet_sl_vgg_best_2.pt",
+                path=checkpoint_dir / "adnet_sl_vgg_best_afo_1.pt",
             )
             print("Saved new best checkpoint.")
 

@@ -24,3 +24,5 @@ git clone https://github.com/JackWoo0831/Mamba_Trackers.git
 note: make sure your interpreter sees the project root (interpreter struggles to find subfolders)
 use 
 export PYTHONPATH=<<project path>> as needed
+
+developer>reload window on vs code can also be needed 
