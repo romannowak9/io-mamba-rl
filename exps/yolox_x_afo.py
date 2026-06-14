@@ -1,5 +1,5 @@
 import os
-from yolox.exp import Exp as MyExp
+from ByteTrack.yolox.exp import Exp as MyExp
 
 class Exp(MyExp):
     def __init__(self):
@@ -29,9 +29,9 @@ class Exp(MyExp):
         # ROZDZIELCZOŚĆ I PREPROCESING
         # =====================================================================
         # Zdjęcia w AFO są duże (2K/4K). Skalowanie do [800, 1440] zapewnia 
-        # optymalny kompromis między wykrywaniem małych dronów a pamięcią VRAM.
-        self.input_size = (800, 1440)
-        self.test_size = (800, 1440)
+        # optymalny kompromis między wykrywaniem małych obiektów a pamięcią VRAM.
+        # self.input_size = (800, 1440)
+        # self.test_size = (800, 1440)
         
         # =====================================================================
         # USTAWIENIA POSTPROCESINGU (DLA TRACKERA)

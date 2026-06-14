@@ -5,7 +5,9 @@ import yaml
 
 sys.path.append(os.path.abspath('./Mamba_Trackers'))  # Dodajemy ścieżkę do katalogu z modelem
 
-from ssm_tracker.models.MambaTrack import MambaTrack 
+#from ssm_tracker.models.MambaTrack import MambaTrack 
+
+from Mamba_Trackers.ssm_tracker.models import MambaTrack
 
 
 # UWAGA: Trzeba sklonować do root projektu repozytorium Mamba_Trackers
