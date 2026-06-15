@@ -1,3 +1,4 @@
+import csv
 import cv2
 import numpy as np
 import torch
@@ -14,147 +15,43 @@ from models.VOT.tracking.actions import (
 )
 from models.VOT.utils.bbox import iou
 from models.VOT.utils.crops import crop_patch, resize_patch
+from models.VOT.tracking.tracking_on_sequence import find_frames, rollout_one_frame, draw_box
 
 
-def patch_to_tensor(patch, device):
-    patch = cv2.cvtColor(patch, cv2.COLOR_BGR2RGB)
-    patch = torch.from_numpy(patch).permute(2, 0, 1).float() / 255.0
-    return patch.unsqueeze(0).to(device)
+def load_sequence_list(txt_path):
+    with open(txt_path, "r") as f:
+        return [
+            line.strip()
+            for line in f
+            if line.strip()
+        ]
 
 
-def crop_box_as_tensor(frame, box, input_size, device):
-    patch = crop_patch(frame, box)
+def save_results_csv(results, output_csv):
+    with open(output_csv, "w", newline="") as f:
 
-    if patch is None or patch.size == 0:
-        patch = np.zeros((input_size[1], input_size[0], 3), dtype=np.uint8)
-    else:
-        patch = resize_patch(patch, input_size)
+        writer = csv.writer(f)
 
-    return patch_to_tensor(patch, device)
+        writer.writerow([
+            "sequence",
+            "mean_iou",
+            "success_rate",
+            "avg_steps",
+            "mean_reward",
+            "final_iou",
+            "frames_evaluated",
+        ])
 
-
-def rollout_one_frame(
-    model,
-    frame,
-    initial_box,
-    gt_box,
-    action_set,
-    device,
-    history=None,
-    input_size=(112, 112),
-    history_length=10,
-    max_steps=10,
-    reward_type="adnet",
-    sample_actions=False,
-):
-    img_height, img_width = frame.shape[:2]
-
-    box = list(map(float, initial_box))
-    if history is None:
-        history = ActionHistory(action_set, history_length=history_length)
-    else:
-        #ensure history is ActionHistory()
-        if not isinstance(history, ActionHistory):
-            history = ActionHistory(action_set, history_length=history_length)
-            print("History is not an instance of ActionHistory. Creating a new one.")
-
-    actions = []
-    log_probs = []
-
-    with torch.no_grad() if not sample_actions else torch.enable_grad():
-        for _ in range(max_steps):
-            patch_tensor = crop_box_as_tensor(
-                frame=frame,
-                box=box,
-                input_size=input_size,
-                device=device,
-            )
-
-            history_tensor = torch.from_numpy(history.as_vector()).float()
-            history_tensor = history_tensor.unsqueeze(0).to(device)
-
-            action_logits, _ = model(patch_tensor, history_tensor)
-            action_probs = torch.softmax(action_logits, dim=1)
-
-            if sample_actions:
-                dist = torch.distributions.Categorical(probs=action_probs)
-                action_idx_tensor = dist.sample()
-                log_prob = dist.log_prob(action_idx_tensor)
-
-                action_idx = int(action_idx_tensor.item())
-                log_probs.append(log_prob)
-            else:
-                action_idx = int(action_probs.argmax(dim=1).item())
-
-            action = index_to_action(action_idx, action_set)
-            actions.append(action)
-
-            if action == "stop":
-                break
-
-            box = transition_box(
-                box=box,
-                action=action,
-                img_width=img_width,
-                img_height=img_height,
-            )
-
-            history.push(action)
-
-    final_iou = iou(box, gt_box)
-
-    if reward_type == "adnet":
-        reward = 1.0 if final_iou > 0.7 else -1.0
-    elif reward_type == "drone":
-        reward = (max_steps - len(actions)) * final_iou if final_iou > 0.7 else -1.0
-    else:
-        raise ValueError(f"Unknown reward_type: {reward_type}")
-
-    return {
-        "final_box": box,
-        "actions": actions,
-        "log_probs": log_probs,
-        "reward": reward,
-        "final_iou": final_iou,
-        "num_steps": len(actions),
-        "history": history
-    }
-
-
-def box_to_corners(box):
-    x_center, y_center, width, height = box
-
-    x1 = int(round(x_center - width / 2))
-    y1 = int(round(y_center - height / 2))
-    x2 = int(round(x_center + width / 2))
-    y2 = int(round(y_center + height / 2))
-
-    return x1, y1, x2, y2
-
-
-def find_frames(sequence_dir):
-    sequence_dir = Path(sequence_dir)
-
-    frames = []
-    for ext in ["*.jpg", "*.jpeg", "*.png", "*.bmp"]:
-        frames.extend(sequence_dir.glob(ext))
-
-    return sorted(frames)
-
-
-def draw_box(frame, box, color, label):
-    x1, y1, x2, y2 = box_to_corners(box)
-
-    cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-    cv2.putText(
-        frame,
-        label,
-        (x1, max(0, y1 - 8)),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.5,
-        color,
-        2,
-    )
+        for r in results:
+            writer.writerow([
+                r["sequence"],
+                f"{r['mean_iou']:.6f}",
+                f"{r['success_rate']:.6f}",
+                f"{r['avg_steps']:.6f}",
+                f"{r['mean_reward']:.6f}",
+                f"{r['final_iou']:.6f}",
+                r["frames_evaluated"],
+            ])
 
 
 def evaluate_sequence(
@@ -322,10 +219,189 @@ def evaluate_sequence(
         "success_rate": success_rate,
         "avg_steps": avg_steps,
         "mean_reward": mean_reward,
+        "final_iou": result["final_iou"],
+        "frames_evaluated": len(ious),
         "ious": ious,
         "rewards": rewards,
         "steps": steps,
     }
+
+
+def evaluate_multiple_sequences(
+    model,
+    sequence_list_file,
+    dataset_root="data",
+    action_set=None,
+    device="cuda",
+    max_frames=None,
+    output_csv="sequence_results.csv",
+):
+
+    sequences = load_sequence_list(sequence_list_file)
+
+    print(f"Loaded {len(sequences)} sequences")
+
+    all_results = []
+
+    mean_ious = []
+    success_rates = []
+    rewards = []
+    avg_steps = []
+
+    final_success_count = 0
+
+    for seq_idx, sequence_name in enumerate(sequences):
+
+        sequence_dir = Path(dataset_root) / sequence_name
+
+        print(
+            f"\n[{seq_idx+1}/{len(sequences)}] "
+            f"{sequence_name}"
+        )
+
+        try:
+
+            metrics = evaluate_sequence(
+                model=model,
+                sequence_dir=sequence_dir,
+                action_set=action_set,
+                device=device,
+                start_frame=0,
+                max_frames=max_frames,
+                display=False,
+                save_video_path=None,
+            )
+
+            result = {
+                "sequence": sequence_name,
+                **metrics,
+            }
+
+            all_results.append(result)
+
+            mean_ious.append(metrics["mean_iou"])
+            success_rates.append(metrics["success_rate"])
+            rewards.append(metrics["mean_reward"])
+            avg_steps.append(metrics["avg_steps"])
+
+            if metrics["final_iou"] >= 0.7:
+                final_success_count += 1
+
+        except Exception as e:
+
+            print(
+                f"FAILED: {sequence_name}"
+            )
+
+            print(e)
+
+    num_sequences = len(all_results)
+
+    summary = {
+        "mean_iou":
+            float(np.mean(mean_ious))
+            if mean_ious else 0.0,
+
+        "mean_success_rate":
+            float(np.mean(success_rates))
+            if success_rates else 0.0,
+
+        "mean_reward":
+            float(np.mean(rewards))
+            if rewards else 0.0,
+
+        "mean_steps":
+            float(np.mean(avg_steps))
+            if avg_steps else 0.0,
+
+        "num_sequences":
+            num_sequences,
+
+        "final_success_count":
+            final_success_count,
+
+        "final_success_ratio":
+            (
+                final_success_count / num_sequences
+                if num_sequences > 0
+                else 0.0
+            ),
+    }
+
+    save_results_csv(
+        all_results,
+        output_csv,
+    )
+
+    print("\n")
+    print("=" * 60)
+    print("GLOBAL RESULTS")
+    print("=" * 60)
+
+    print(
+        f"Sequences evaluated: "
+        f"{summary['num_sequences']}"
+    )
+
+    print(
+        f"Mean IoU: "
+        f"{summary['mean_iou']:.4f}"
+    )
+
+    print(
+        f"Mean Success Rate: "
+        f"{summary['mean_success_rate']:.4f}"
+    )
+
+    print(
+        f"Mean Reward: "
+        f"{summary['mean_reward']:.4f}"
+    )
+
+    print(
+        f"Mean Steps: "
+        f"{summary['mean_steps']:.2f}"
+    )
+
+    print(
+        f"Final IoU >= 0.7: "
+        f"{summary['final_success_count']}"
+        f"/{summary['num_sequences']}"
+        f" ({summary['final_success_ratio']:.4f})"
+    )
+
+    print("\n")
+
+    all_results.sort(
+        key=lambda x: x["final_iou"],
+        reverse=True,
+    )
+
+    print("=" * 60)
+    print("TOP 10 SEQUENCES")
+    print("=" * 60)
+
+    for r in all_results[:10]:
+
+        print(
+            f"{r['sequence']:<45}"
+            f"{r['final_iou']:.4f}"
+        )
+
+    print("\n")
+
+    print("=" * 60)
+    print("BOTTOM 10 SEQUENCES")
+    print("=" * 60)
+
+    for r in all_results[-10:]:
+
+        print(
+            f"{r['sequence']:<45}"
+            f"{r['final_iou']:.4f}"
+        )
+
+    return summary, all_results
 
 
 if __name__ == "__main__":
@@ -346,47 +422,12 @@ if __name__ == "__main__":
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
-    evaluate_sequence(
+    summary, results = evaluate_multiple_sequences(
         model=model,
-        sequence_dir="data/VOT2015/car1",
+        sequence_list_file="train_sequences_afo.txt",
+        dataset_root="data",
         action_set=action_set,
         device=device,
-        start_frame=0,
         max_frames=200,
-        display=True,
-        save_video_path="debug_adnet_car1.mp4",
+        output_csv="vot_train_sequences_results.csv",
     )
-
-
-#SL:
-# Mean IoU: 0.7071
-# Success rate IoU>0.7: 0.5779
-# Average steps: 2.66
-# Mean reward: 0.1558
-# Final frame IOU: 0.6524
-# Total evaluation duration: 2.58 seconds
-# Average evaluation duration per frame: 0.0130 seconds
-# Total loop time (with display and read): 11.79 seconds
-# Average loop time per frame (with display and read): 0.0593 seconds
-
-#RL 1:
-# Mean IoU: 0.7482
-# Success rate IoU>0.7: 0.8894
-# Average steps: 4.34
-# Mean reward: 0.7789
-# Final frame IOU: 0.7477
-# Total evaluation duration: 3.62 seconds
-# Average evaluation duration per frame: 0.0182 seconds
-# Total loop time (with display and read): 12.47 seconds
-# Average loop time per frame (with display and read): 0.0626 seconds
-
-# RL AFO:
-#Mean IoU: 0.7406
-# Success rate IoU>0.7: 0.8492
-# Average steps: 3.16
-# Mean reward: 0.6985
-# Final frame IOU: 0.6524
-# Total evaluation duration: 3.02 seconds
-# Average evaluation duration per frame: 0.0152 seconds
-# Total loop time (with display and read): 12.31 seconds
-# Average loop time per frame (with display and read): 0.0619 seconds

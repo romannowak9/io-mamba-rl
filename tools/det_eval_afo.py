@@ -201,7 +201,7 @@ def evaluate_detector(data_root, det_results_dir, split="train", conf_thresh=0.5
     # Drukowanie tabeli sekwencji
     headers = ["Sekwencja", "TP", "FP", "FN", "Precision", "Recall", "F1-Score", "Mean IoU"]
     print("\n" + "="*85)
-    print(f"RAPORT DETEKCJI YOLOX (Split: {split} | Conf Thresh: {conf_thresh} | IoU Thresh: {iou_thresh})")
+    print(f"RAPORT DETEKCJI Mamba-YOLO (Split: {split} | Conf Thresh: {conf_thresh} | IoU Thresh: {iou_thresh})")
     print("="*85)
     print(tabulate(table_data, headers=headers, tablefmt="grid"))
     
@@ -224,7 +224,7 @@ if __name__ == "__main__":
     # Ścieżki dopasuj do swojej konfiguracji
     DATA_ROOT = "data/afo"
     SPLIT = "train"
-    DET_RESULTS_DIR = f"out/det_results_yolox_m/afo/{SPLIT}"  # lub f"out/det_results_yolox_m/afo/{SPLIT}" dla yolox_x
+    DET_RESULTS_DIR = f"out/det_results_mamba/afo/{SPLIT}"  # lub f"out/det_results_yolox_m/afo/{SPLIT}" dla yolox_x
     
     evaluate_detector(
         data_root=DATA_ROOT,
