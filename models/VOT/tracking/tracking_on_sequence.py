@@ -341,7 +341,7 @@ if __name__ == "__main__":
     ).to(device)
 
     #checkpoint_location = "checkpoints/adnet_sl_vgg_best_1.pt"
-    checkpoint_location = "checkpoints/rl_vot/rl_training_best_1.pt"
+    checkpoint_location = "checkpoints/rl_vot/rl_training_best_afo_1.pt"
     checkpoint = torch.load(checkpoint_location, map_location=device, weights_only=False)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
@@ -379,3 +379,14 @@ if __name__ == "__main__":
 # Average evaluation duration per frame: 0.0182 seconds
 # Total loop time (with display and read): 12.47 seconds
 # Average loop time per frame (with display and read): 0.0626 seconds
+
+# RL AFO:
+#Mean IoU: 0.7406
+# Success rate IoU>0.7: 0.8492
+# Average steps: 3.16
+# Mean reward: 0.6985
+# Final frame IOU: 0.6524
+# Total evaluation duration: 3.02 seconds
+# Average evaluation duration per frame: 0.0152 seconds
+# Total loop time (with display and read): 12.31 seconds
+# Average loop time per frame (with display and read): 0.0619 seconds

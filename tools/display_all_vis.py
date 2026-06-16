@@ -9,21 +9,27 @@ from utils.helpers import sort_key_from_filename
 # ==========================================================
 # KONFIGURACJA ŚCIEŻEK (na podstawie poprzednich skryptów)
 # ==========================================================
-SEQ = "r3"  # Wybrana sekwencja
+SEQ = "a"  # Wybrana sekwencja
 
 PATHS = {
-    "GT":      f"out/gt_vis/train/{SEQ}",                             # Ścieżka z wyrenderowanym GT
-    "DET":     f"out/det_results_yolox_m/afo/train/vis_results/{SEQ}", # Ścieżka z wyrenderowanymi detekcjami
-    "TRK":     f"out/track_res/afo/train/vis_results/{SEQ}",          # Ścieżka z wyrenderowanym trackingiem (np. ByteTrack)
-    "TRK_VOT": f"out/refined_track_vis/{SEQ}"                           # Ścieżka z wyrenderowanym TRK_VOT
+    "GT":      f"out/gt_vis/test/{SEQ}",                             # Ścieżka z wyrenderowanym GT
+    "DET":     f"out/det_results_mamba/afo/test/vis_results/{SEQ}", # Ścieżka z wyrenderowanymi detekcjami
+    "TRK":     f"out/track_res_mamba/afo/test/vis_results/{SEQ}",   # Ścieżka z wyrenderowanym trackingiem (np. ByteTrack)
+    "TRK_VOT": f"out/refined_track_mamba_vis/{SEQ}"                 # Ścieżka z wyrenderowanym TRK_VOT
 }
 
 def play_four_windows(paths_dict):
     # Wczytanie i bezpieczne posortowanie plików z każdego folderu
-    files_gt = sorted(glob.glob(os.path.join(paths_dict["GT"], "*.*")), key=lambda x : sort_key_from_filename(x.split('/')[-1]))
+    files_gt = sorted(
+        glob.glob(os.path.join(paths_dict["GT"], "*.*")),
+        key=lambda x: sort_key_from_filename(x.split('/')[-1])
+    )
     files_det = sorted(glob.glob(os.path.join(paths_dict["DET"], "*.*")))
     files_trk = sorted(glob.glob(os.path.join(paths_dict["TRK"], "*.*")))
-    files_vot = sorted(glob.glob(os.path.join(paths_dict["TRK_VOT"], "*.*")), key=lambda x : sort_key_from_filename(x.split('/')[-1]))
+    files_vot = sorted(
+        glob.glob(os.path.join(paths_dict["TRK_VOT"], "*.*")),
+        key=lambda x: sort_key_from_filename(x.split('/')[-1])
+    )
 
     # Synchronizacja: bierzemy najmniejszą wspólną długość z 4 folderów
     min_len = min(len(files_gt), len(files_det), len(files_trk), len(files_vot))
@@ -39,22 +45,21 @@ def play_four_windows(paths_dict):
     win_trk = "3. Tracking (TRK)"
     win_vot = "4. Tracking VOT (TRK_VOT)"
 
-    # Inicjalizacja, skalowanie i rozsuwanie okien na pulpicie (x_pos)
-    # Zmniejszyłem szerokość okien do 450px, żeby 4 okna zmieściły się obok siebie w linii (4 * 450px = 1800px)
-    win_width = 450
-    win_height = 320
-    
+    win_width = 900
+    win_height = 500
+
+    # Układ 2x2 przy rogach ekranu 1920x1080
     windows_config = [
-        (win_gt, 10),                            # 1. okno
-        (win_det, 10 + (win_width + 15) * 1),    # 2. okno
-        (win_trk, 10 + (win_width + 15) * 2),    # 3. okno
-        (win_vot, 10 + (win_width + 15) * 3)     # 4. okno (TRK_VOT)
+        (win_gt, 0, 0),                    # lewy górny
+        (win_det, 1920 - win_width, 0),    # prawy górny
+        (win_trk, 0, 1080 - win_height),   # lewy dolny
+        (win_vot, 1920 - win_width, 1080 - win_height)  # prawy dolny
     ]
 
-    for name, x_pos in windows_config:
+    for name, x_pos, y_pos in windows_config:
         cv2.namedWindow(name, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(name, win_width, win_height)
-        cv2.moveWindow(name, x_pos, 150) # 150 to odległość od górnej krawędzi ekranu
+        cv2.moveWindow(name, x_pos, y_pos)
 
     print(f"[+] Odtwarzam {min_len} klatek synchronicznie w 4 oknach.")
     print("[+] Kliknij na dowolne okno i naciśnij [Q], aby wyjść.")
@@ -67,10 +72,14 @@ def play_four_windows(paths_dict):
         img_vot = cv2.imread(files_vot[i])
 
         # Wyświetlenie obrazu w odpowiadającym mu oknie
-        if img_gt is not None: cv2.imshow(win_gt, img_gt)
-        if img_det is not None: cv2.imshow(win_det, img_det)
-        if img_trk is not None: cv2.imshow(win_trk, img_trk)
-        if img_vot is not None: cv2.imshow(win_vot, img_vot)
+        if img_gt is not None:
+            cv2.imshow(win_gt, img_gt)
+        if img_det is not None:
+            cv2.imshow(win_det, img_det)
+        if img_trk is not None:
+            cv2.imshow(win_trk, img_trk)
+        if img_vot is not None:
+            cv2.imshow(win_vot, img_vot)
 
         # Szybkość odtwarzania: 50ms opóźnienia (~20 FPS)
         if cv2.waitKey(50) == ord('q'):
